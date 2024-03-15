@@ -39,10 +39,10 @@ def get_ncc_descriptors(img, patchsize):
                 bottom = min(i + half_patch + 1, height)
                 left = max(j - half_patch, 0)
                 right = min(j + half_patch + 1, width)
-                patch_slice = img[top:bottom, left:right, k] - \
+                patch_slice = img[top : bottom, left : right, k] - \
                     img[top:bottom, left:right, k].mean()
-                patch[top-i+half_patch:bottom-i+half_patch, left -
-                      j+half_patch:right-j+half_patch, k] = patch_slice
+                patch[top - i + half_patch : bottom - i +  half_patch, left -
+                      j + half_patch : right - j + half_patch, k] = patch_slice
             patch_vector = patch.flatten()
             norm = np.linalg.norm(patch_vector)
             if norm < 1e-6:
