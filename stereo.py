@@ -1,5 +1,6 @@
 import numpy as np
-#==============No additional imports allowed ================================#
+# ==============No additional imports allowed ================================#
+
 
 def get_ncc_descriptors(img, patchsize):
     '''
@@ -20,11 +21,36 @@ def get_ncc_descriptors(img, patchsize):
     (5) store it in the (i,j)th location in the output
 
     If the window extends past the image boundary, zero out the descriptor
-    
+
     If the norm of the vector is <1e-6 before normalizing, zero out the vector.
 
     '''
-    pass
+    height, width, channels = img.shape
+    normalized = np.zeros(
+        (height, width, channels * patchsize**2), dtype=np.float32)
+    half_patch = patchsize // 2
+
+    for i in range(height):
+        for j in range(width):
+            patch = np.zeros((patchsize, patchsize, channels),
+                             dtype=np.float32)
+            for k in range(channels):
+                top = max(i - half_patch, 0)
+                bottom = min(i + half_patch + 1, height)
+                left = max(j - half_patch, 0)
+                right = min(j + half_patch + 1, width)
+                patch_slice = img[top:bottom, left:right, k] - \
+                    img[top:bottom, left:right, k].mean()
+                patch[top-i+half_patch:bottom-i+half_patch, left -
+                      j+half_patch:right-j+half_patch, k] = patch_slice
+            patch_vector = patch.flatten()
+            norm = np.linalg.norm(patch_vector)
+            if norm < 1e-6:
+                patch_vector = np.zeros_like(patch_vector)
+            else:
+                patch_vector /= norm
+            normalized[i, j] = patch_vector
+    return normalized
 
 
 def compute_ncc_vol(img_right, img_left, patchsize, dmax):
@@ -45,7 +71,31 @@ def compute_ncc_vol(img_right, img_left, patchsize, dmax):
 
     Your code should call get_ncc_descriptors to compute the descriptors once.
     '''
-    pass
+    height, width, _ = img_right.shape
+    # Precompute the NCC descriptors for both images
+    ncc_descriptors_right = get_ncc_descriptors(img_right, patchsize)
+    ncc_descriptors_left = get_ncc_descriptors(img_left, patchsize)
+
+    # Initialize the NCC volume with zeros
+    ncc_vol = np.zeros((height, width, dmax), dtype=np.float32)
+
+    for d in range(dmax):
+        # Shift the right image's descriptors by d
+        shifted_descriptors = np.roll(ncc_descriptors_right, d, axis=1)
+        # Zero out the descriptors that have wrapped around
+        if d > 0:
+            shifted_descriptors[:, :d, :] = 0
+
+        # Compute the dot product between left descriptors and shifted right descriptors for each disparity
+        for i in range(height):
+            for j in range(width):
+                vector_left = ncc_descriptors_left[i, j]
+                vector_right = shifted_descriptors[i, j]
+                # Compute NCC using dot product since vectors are already normalized
+                ncc_vol[i, j, d] = np.dot(vector_left, vector_right)
+
+    return ncc_vol
+
 
 def get_disparity(ncc_vol):
     '''
@@ -57,10 +107,5 @@ def get_disparity(ncc_vol):
 
     the chosen disparity for each pixel should be the one with the largest score for that pixel
     '''
-    pass
-
-
-
-
-
-    
+    disparity_map = np.argmax(ncc_vol, axis=2)
+    return disparity_map
