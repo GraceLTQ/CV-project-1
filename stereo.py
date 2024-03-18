@@ -25,31 +25,80 @@ def get_ncc_descriptors(img, patchsize):
     If the norm of the vector is <1e-6 before normalizing, zero out the vector.
 
     '''
+    # height, width, channels = img.shape
+    # normalized = np.zeros(
+    #     (height, width, channels * patchsize**2), dtype=np.float32)
+    # half_patch = patchsize // 2
+
+    # for i in range(height):
+    #     for j in range(width):
+    #         patch = np.zeros((patchsize, patchsize, channels),
+    #                          dtype=np.float32)
+    #         for k in range(channels):
+    #             top = max(i - half_patch, 0)
+    #             bottom = min(i + half_patch + 1, height)
+    #             left = max(j - half_patch, 0)
+    #             right = min(j + half_patch + 1, width)
+    #             patch_slice = img[top: bottom, left: right, k] - \
+    #                 img[top:bottom, left:right, k].mean()
+    #             patch[top - i + half_patch: bottom - i + half_patch, left -
+    #                   j + half_patch: right - j + half_patch, k] = patch_slice
+    #         patch_vector = patch.flatten()
+    #         norm = np.linalg.norm(patch_vector)
+    #         if norm < 1e-6:
+    #             patch_vector = np.zeros_like(patch_vector)
+    #         else:
+    #             patch_vector /= norm
+    #         normalized[i, j] = patch_vector
+    # return normalized
+
     height, width, channels = img.shape
-    normalized = np.zeros(
-        (height, width, channels * patchsize**2), dtype=np.float32)
-    half_patch = patchsize // 2
+    descriptor_dim = channels * patchsize ** 2
+    normalized = np.zeros((height, width, descriptor_dim), dtype=np.float32)
+
+    half_patchsize = patchsize // 2
 
     for i in range(height):
         for j in range(width):
+            # Initialize patch with zeros for cases where the window extends past the image boundary
             patch = np.zeros((patchsize, patchsize, channels),
                              dtype=np.float32)
-            for k in range(channels):
-                top = max(i - half_patch, 0)
-                bottom = min(i + half_patch + 1, height)
-                left = max(j - half_patch, 0)
-                right = min(j + half_patch + 1, width)
-                patch_slice = img[top : bottom, left : right, k] - \
-                    img[top:bottom, left:right, k].mean()
-                patch[top - i + half_patch : bottom - i +  half_patch, left -
-                      j + half_patch : right - j + half_patch, k] = patch_slice
-            patch_vector = patch.flatten()
-            norm = np.linalg.norm(patch_vector)
-            if norm < 1e-6:
-                patch_vector = np.zeros_like(patch_vector)
-            else:
-                patch_vector /= norm
-            normalized[i, j] = patch_vector
+
+            # Calculate the coordinates of the patch in the original image
+            # and ensure they are within the image boundaries
+            top = max(i - half_patchsize, 0)
+            bottom = min(i + half_patchsize + 1, height)
+            left = max(j - half_patchsize, 0)
+            right = min(j + half_patchsize + 1, width)
+
+            # Calculate the coordinates of the patch in the patch array
+            patch_top = max(half_patchsize - i, 0)
+            patch_bottom = patch_top + (bottom - top)
+            patch_left = max(half_patchsize - j, 0)
+            patch_right = patch_left + (right - left)
+
+            # Copy the valid part of the window into the patch array
+            patch[patch_top:patch_bottom, patch_left:patch_right,
+                  :] = img[top:bottom, left:right, :]
+
+            # Subtract the mean for every channel
+            mean_subtracted_patch = patch - \
+                np.mean(patch, axis=(0, 1), keepdims=True)
+
+            # Flatten the patch into a single vector
+            vector = mean_subtracted_patch.flatten()
+
+            # Compute L2 norm of the vector
+            norm = np.linalg.norm(vector)
+
+            # Normalize the vector by its L2 norm if norm is >= 1e-6, else zero out
+            normalized_vector = vector / \
+                norm if norm >= 1e-6 else np.zeros(
+                    descriptor_dim, dtype=np.float32)
+
+            # Store the normalized vector in the output
+            normalized[i, j, :] = normalized_vector
+
     return normalized
 
 
@@ -71,28 +120,52 @@ def compute_ncc_vol(img_right, img_left, patchsize, dmax):
 
     Your code should call get_ncc_descriptors to compute the descriptors once.
     '''
-    height, width, _ = img_right.shape
-    # Precompute the NCC descriptors for both images
-    ncc_descriptors_right = get_ncc_descriptors(img_right, patchsize)
-    ncc_descriptors_left = get_ncc_descriptors(img_left, patchsize)
+    # height, width, _ = img_right.shape
+    # # Precompute the NCC descriptors for both images
+    # ncc_descriptors_right = get_ncc_descriptors(img_right, patchsize)
+    # ncc_descriptors_left = get_ncc_descriptors(img_left, patchsize)
 
-    # Initialize the NCC volume with zeros
-    ncc_vol = np.zeros((height, width, dmax), dtype=np.float32)
+    # # Initialize the NCC volume with zeros
+    # ncc_vol = np.zeros((height, width, dmax), dtype=np.float32)
+
+    # for d in range(dmax):
+    #     # Shift the right image's descriptors by d
+    #     shifted_descriptors = np.roll(ncc_descriptors_right, d, axis=1)
+    #     # Zero out the descriptors that have wrapped around
+    #     if d > 0:
+    #         shifted_descriptors[:, :d, :] = 0
+
+    #     # Compute the dot product between left descriptors and shifted right descriptors for each disparity
+    #     for i in range(height):
+    #         for j in range(width):
+    #             vector_left = ncc_descriptors_left[i, j]
+    #             vector_right = shifted_descriptors[i, j]
+    #             # Compute NCC using dot product since vectors are already normalized
+    #             ncc_vol[i, j, d] = np.dot(vector_left, vector_right)
+
+    # return ncc_vol
+
+    # Compute NCC descriptors for both images
+    descriptors_right = get_ncc_descriptors(img_right, patchsize)
+    descriptors_left = get_ncc_descriptors(img_left, patchsize)
+
+    # Get image dimensions
+    height, width, _ = img_right.shape
+
+    # Initialize the NCC volume
+    ncc_vol = np.zeros((dmax, height, width))
 
     for d in range(dmax):
-        # Shift the right image's descriptors by d
-        shifted_descriptors = np.roll(ncc_descriptors_right, d, axis=1)
-        # Zero out the descriptors that have wrapped around
-        if d > 0:
-            shifted_descriptors[:, :d, :] = 0
-
-        # Compute the dot product between left descriptors and shifted right descriptors for each disparity
         for i in range(height):
             for j in range(width):
-                vector_left = ncc_descriptors_left[i, j]
-                vector_right = shifted_descriptors[i, j]
-                # Compute NCC using dot product since vectors are already normalized
-                ncc_vol[i, j, d] = np.dot(vector_left, vector_right)
+                # Ensure that the left image index (j + d) does not exceed image width
+                if (j + d) < width:
+                    # Dot product between descriptors to compute similarity
+                    ncc_vol[d, i, j] = np.dot(
+                        descriptors_right[i, j, :], descriptors_left[i, j + d, :])
+                else:
+                    # If the index exceeds the width, assign a score of 0 (indicating no match)
+                    ncc_vol[d, i, j] = 0
 
     return ncc_vol
 
@@ -109,3 +182,5 @@ def get_disparity(ncc_vol):
     '''
     disparity_map = np.argmax(ncc_vol, axis=2)
     return disparity_map
+    # disparity = np.argmax(ncc_vol, axis=0)
+    # return disparity
