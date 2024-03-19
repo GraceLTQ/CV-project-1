@@ -180,7 +180,7 @@ def get_disparity(ncc_vol):
 
     the chosen disparity for each pixel should be the one with the largest score for that pixel
     '''
-    disparity_map = np.argmax(ncc_vol, axis=2)
-    return disparity_map
-    # disparity = np.argmax(ncc_vol, axis=0)
-    # return disparity
+    # disparity_map = np.argmax(ncc_vol, axis=2)
+    # return disparity_map
+    disparity = np.argmax(ncc_vol, axis=0)
+    return disparity
